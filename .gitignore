@@ -1,0 +1,16 @@
+# Node / Framework
+node_modules/
+dist/
+src/.observablehq/cache/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Raw downloads and intermediate frames (re-creatable, hundreds of MB)
+data_cache/
+
+# Secrets — never commit the Portal da Transparência key
+.env
