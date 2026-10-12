@@ -7,14 +7,19 @@ title: Consulta SQL
 Os arquivos Parquet que alimentam o site são carregados num **DuckDB rodando no seu navegador** (DuckDB-WASM). Nada é enviado a servidor algum — faça as suas próprias comparações.
 
 ```js
+// Tables are decoded to Arrow first (parquet-wasm, the same reader the other pages
+// use) and copied into DuckDB, instead of letting DuckDB-WASM read the Parquet files
+// itself. That avoids two problems: its HTTP range requests break on GitHub Pages,
+// which gzips .parquet responses, and its bundled DuckDB 1.1 can't parse the footer
+// of files written by Polars 2.
 const db = DuckDBClient.of({
-  municipios: FileAttachment("data/municipios.parquet"),
-  deputados: FileAttachment("data/deputados.parquet"),
-  ceap: FileAttachment("data/ceap.parquet"),
-  fornecedores: FileAttachment("data/ceap-fornecedores.parquet"),
-  ceap_ceis: FileAttachment("data/ceap-ceis.parquet"),
-  emendas: FileAttachment("data/emendas.parquet"),
-  emendas_municipios: FileAttachment("data/emendas-municipios.parquet")
+  municipios: FileAttachment("data/municipios.parquet").parquet(),
+  deputados: FileAttachment("data/deputados.parquet").parquet(),
+  ceap: FileAttachment("data/ceap.parquet").parquet(),
+  fornecedores: FileAttachment("data/ceap-fornecedores.parquet").parquet(),
+  ceap_ceis: FileAttachment("data/ceap-ceis.parquet").parquet(),
+  emendas: FileAttachment("data/emendas.parquet").parquet(),
+  emendas_municipios: FileAttachment("data/emendas-municipios.parquet").parquet()
 });
 ```
 
