@@ -70,7 +70,7 @@ tests/               offline tests for cleaning, SIDRA reshape and matching
 
 ## Refreshing data
 
-Framework caches each loader's output in `src/.observablehq/cache` and only reruns a loader when its own file changes. After changing code in `pipeline/`, run `npm run clean` to force a rebuild (it clears Framework's loader cache and the memoised cleaned frames in `data_cache/frames`, but keeps raw downloads). Raw downloads in `data_cache/` expire on their own (3–90 days depending on the source); delete the folder to start fresh.
+Framework caches each loader's output in `src/.observablehq/cache` and only reruns a loader when its own file changes. The memoised cleaned frames in `data_cache/frames` are keyed by a hash of the `pipeline/` source, so they rebuild automatically after any code change (also in CI, where `data_cache/` is restored from the previous run). Framework's own loader cache doesn't see `pipeline/` changes, though: locally, run `npm run clean` to force the loaders to rerun (it keeps raw downloads). Raw downloads in `data_cache/` expire on their own (3–90 days depending on the source); delete the folder to start fresh.
 
 ## Tests
 
