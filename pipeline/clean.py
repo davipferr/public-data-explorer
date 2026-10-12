@@ -182,3 +182,22 @@ def municipio_code_expr(expr: pl.Expr, valid: pl.Series) -> pl.Expr:
 def cnpj_cpf_expr(expr: pl.Expr) -> pl.Expr:
     """Keep only the digits of a CNPJ/CPF ("12.345.678/0001-90" -> "12345678000190")."""
     return expr.str.replace_all(r"\D", "").replace("", None)
+
+
+def doc_publico_expr(expr: pl.Expr) -> pl.Expr:
+    """Display form of a digits-only CNPJ/CPF, safe to publish.
+
+    * CNPJ (14 digits, a company): shown in full, formatted "12.345.678/0001-90".
+    * CPF (11 digits, a person): masked like the Portal da Transparência does,
+      keeping only the middle six digits: "***.456.789-**" (LGPD).
+    * anything else: unchanged.
+
+    Apply it only to loader outputs; joins (e.g. CEAP x CEIS) need the full digits.
+    """
+    return (
+        pl.when(expr.str.len_chars() == 14)
+        .then(pl.format("{}.{}.{}/{}-{}", expr.str.slice(0, 2), expr.str.slice(2, 3), expr.str.slice(5, 3), expr.str.slice(8, 4), expr.str.slice(12, 2)))
+        .when(expr.str.len_chars() == 11)
+        .then(pl.format("***.{}.{}-**", expr.str.slice(3, 3), expr.str.slice(6, 3)))
+        .otherwise(expr)
+    )

@@ -7,8 +7,10 @@ starting point for scrutiny, not evidence of wrongdoing.
 """
 
 import duckdb
+import polars as pl
 
 from pipeline import frames
+from pipeline.clean import doc_publico_expr
 from pipeline.io import emit_parquet
 
 ceap = frames.ceap()
@@ -30,4 +32,5 @@ df = duckdb.sql(
     ORDER BY valor DESC
     """
 ).pl()
-emit_parquet(df)
+# Mask CPFs (people) after the joins/grouping, which need the full digits.
+emit_parquet(df.with_columns(doc_publico_expr(pl.col("fornecedor_doc")).alias("fornecedor_doc")))

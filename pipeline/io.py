@@ -28,7 +28,18 @@ def js_safe(df: pl.DataFrame) -> pl.DataFrame:
     return df.cast(casts) if casts else df
 
 
+def check_no_cpf(df: pl.DataFrame) -> None:
+    """Refuse to publish full CPFs (LGPD): document columns ("doc", "*_doc") must
+    go through ``clean.doc_publico_expr`` first, which masks them."""
+    for name, dtype in df.schema.items():
+        if (name == "doc" or name.endswith("_doc")) and dtype == pl.String:
+            leaks = df.filter(pl.col(name).str.contains(r"^\d{11}$|^\d{3}\.\d{3}\.\d{3}-\d{2}$")).height
+            if leaks:
+                raise ValueError(f"column {name!r} has {leaks} unmasked CPF(s); apply clean.doc_publico_expr before emitting")
+
+
 def emit_parquet(df: pl.DataFrame) -> None:
+    check_no_cpf(df)
     buf = io.BytesIO()
     js_safe(df).write_parquet(buf, compression="zstd", statistics=True)
     sys.stdout.buffer.write(buf.getvalue())

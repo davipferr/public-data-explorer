@@ -3,6 +3,7 @@ import pytest
 
 from pipeline.clean import (
     br_number_expr,
+    doc_publico_expr,
     decode_latin1,
     municipio_code_expr,
     norm_expr,
@@ -70,3 +71,9 @@ def test_decode_latin1():
     assert decode_latin1(latin).decode("utf-8").startswith("Código")
     utf8_bom = b"\xef\xbb\xbf" + "Ação".encode()
     assert decode_latin1(utf8_bom) == "Ação".encode()
+
+
+def test_doc_publico_masks_cpf_and_formats_cnpj():
+    docs = pl.Series(["12345678000190", "12345678901", "123", None])
+    out = pl.select(doc_publico_expr(pl.lit(docs))).to_series().to_list()
+    assert out == ["12.345.678/0001-90", "***.456.789-**", "123", None]

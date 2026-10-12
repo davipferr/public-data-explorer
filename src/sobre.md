@@ -29,6 +29,7 @@ Este é um site estático. Os dados são baixados e limpos **em tempo de build**
 - **Códigos IBGE.** UF aparece como `33` ou `3300000`; `-1` significa “nacional”. Municípios com 6 dígitos (sem o dígito verificador) são mapeados pelos 6 primeiros dígitos da lista oficial.
 - **Sinais da CEAP.** Reembolsos posteriores (`vlrRestituicao`) são descontados; o complemento de auxílio-moradia vem com valor líquido negativo e é tratado como despesa; créditos de passagens aéreas canceladas permanecem negativos.
 - **Nomes.** Comparações usam uma chave sem acentos, em maiúsculas e sem pontuação (`Alta Floresta D'Oeste` → `ALTA FLORESTA D OESTE`).
+- **CPFs.** Fornecedores pessoa física aparecem com o CPF mascarado (`***.456.789-**`), como no Portal da Transparência, em respeito à LGPD. O número completo é usado só no build, para cruzar as notas com o CEIS, e não é publicado. CNPJs (empresas) aparecem por inteiro.
 
 ## Cruzamentos e sua qualidade
 
