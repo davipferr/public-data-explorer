@@ -10,6 +10,8 @@ Gastos da cota parlamentar, principais fornecedores e emendas de cada deputado d
 import {brl, brlCompact, MESES, num, rows} from "./components/format.js";
 import {palette} from "./components/palette.js";
 import {choropleth} from "./components/choropleth.js";
+import {eleicoesMarks, hbars} from "./components/charts.js";
+import {partyColor} from "./components/parties.js";
 
 const deputados = rows(await FileAttachment("data/deputados.parquet").parquet());
 const ceap = rows(await FileAttachment("data/ceap.parquet").parquet());
@@ -19,6 +21,7 @@ const emendas = rows(await FileAttachment("data/emendas.parquet").parquet());
 const emendasMun = rows(await FileAttachment("data/emendas-municipios.parquet").parquet());
 const municipios = rows(await FileAttachment("data/municipios.parquet").parquet());
 const malhaMun = await FileAttachment("data/malha-municipios.json").json();
+const malhaUf = await FileAttachment("data/malha-uf.json").json();
 const pal = palette(dark);
 ```
 
@@ -43,13 +46,15 @@ const ranking = d3
   .rollups(ceap.filter((d) => d.deputado_id != null), (v) => d3.sum(v, (d) => d.valor), (d) => d.deputado_id)
   .sort((a, b) => b[1] - a[1]);
 const posicao = ranking.findIndex(([d]) => d === id) + 1;
+// Share of deputies who spent less than this one (0 when they have no expenses).
+const percentil = posicao ? (ranking.length - posicao) / (ranking.length - 1 || 1) : null;
 const suasEmendas = emendas.filter((d) => d.deputado_id === id);
 const seusCeis = ceis.filter((d) => d.deputado_id === id);
 const idade = deputado.nascimento ? Math.floor((Date.now() - +deputado.nascimento) / 31_557_600_000) : null;
 ```
 
 <div class="grid grid-cols-4">
-  ${html`<div class="card perfil">
+  ${html`<div class="card perfil" style=${{borderTop: `5px solid ${partyColor(pal, deputado.partido)}`}}>
     <img src=${deputado.foto} alt=${`Foto de ${deputado.nome}`} width="72" height="96" loading="lazy">
     <div>
       <h2>${deputado.nome}</h2>
@@ -57,9 +62,9 @@ const idade = deputado.nascimento ? Math.floor((Date.now() - +deputado.nasciment
       <p class="muted small">${deputado.nome_civil ?? ""}${idade ? `, ${idade} anos` : ""}<br>${deputado.em_exercicio ? "Em exercício" : "Fora de exercício"}</p>
     </div>
   </div>`}
-  <div class="card"><h2>Cota parlamentar (${d3.extent(gastos, (d) => d.ano).join("–") || "–"})</h2><span class="big">${brlCompact(totalGasto)}</span><p class="muted">${posicao ? `${posicao}º de ${ranking.length} parlamentares` : "sem despesas"}</p></div>
+  <div class="card"><h2>Cota parlamentar (${d3.extent(gastos, (d) => d.ano).join("–") || "–"})</h2><span class="big">${brlCompact(totalGasto)}</span>${percentil != null ? html`<div class="meter" style=${{background: pal.blues(7)[0]}} title=${`${posicao}º de ${ranking.length} parlamentares`}><div style=${{width: `${Math.max(2, percentil * 100)}%`, background: pal.accent}}></div></div><p class="muted">gastou mais que ${Math.round(percentil * 100)}% dos deputados</p>` : html`<p class="muted">sem despesas</p>`}</div>
   <div class="card"><h2>Emendas individuais pagas</h2><span class="big">${brlCompact(d3.sum(suasEmendas, (d) => d.pago_total))}</span><p class="muted">${suasEmendas.length ? `${d3.extent(suasEmendas, (d) => d.ano).join("–")}, ${num(d3.sum(suasEmendas, (d) => d.linhas))} registros` : "nenhuma vinculada"}</p></div>
-  <div class="card"><h2>Fornecedores no CEIS</h2><span class="big">${seusCeis.length}</span><p class="muted">${seusCeis.length ? brl(d3.sum(seusCeis, (d) => d.valor)) + " pagos durante a sanção" : "nenhum pagamento a empresa sancionada"}</p></div>
+  ${html`<div class="card" style=${seusCeis.length ? {borderColor: "var(--theme-red)"} : {}}><h2>Fornecedores no CEIS</h2><span class="big">${seusCeis.length}</span><p class="muted">${seusCeis.length ? brl(d3.sum(seusCeis, (d) => d.valor)) + " pagos durante a sanção" : "nenhum pagamento a empresa sancionada"}</p></div>`}
 </div>
 
 ## Cota parlamentar
@@ -77,16 +82,17 @@ const mediaGeral = d3.mean(
 <div class="grid grid-cols-2">
   <div class="card">
     <h2>Gasto mensal</h2>
-    <h3>A linha tracejada é a média de todos os deputados por mês</h3>
+    <h3>A linha tracejada é a média de todos os deputados por mês; as verticais, o 1º turno das eleições</h3>
     ${resize((width) => Plot.plot({
       width,
       height: 300,
       marginLeft: 60,
       x: {type: "utc", label: null},
-      y: {label: null, grid: true, tickFormat: brlCompact},
+      y: {label: null, grid: true, tickFormat: brlCompact, insetTop: 22},
       marks: [
-        Plot.rectY(mensal, {x: "data", interval: "month", y: "valor", fill: pal.accent, inset: 1, rx: 2}),
+        Plot.rectY(mensal, {x: "data", interval: "month", y: "valor", fill: pal.accent, inset: 1, ry1: 2}),
         Plot.ruleY([mediaGeral], {stroke: "currentColor", strokeDasharray: "4,3"}),
+        ...eleicoesMarks(d3.extent(mensal, (d) => d.data), {width}),
         Plot.ruleY([0]),
         Plot.tip(mensal, Plot.pointerX({x: "data", y: "valor", title: (d) => `${MESES[d.mes - 1]}/${d.ano}\n${brl(d.valor)}`}))
       ]
@@ -94,17 +100,7 @@ const mediaGeral = d3.mean(
   </div>
   <div class="card">
     <h2>Por categoria</h2>
-    ${resize((width) => Plot.plot({
-      width,
-      height: 300,
-      marginLeft: 190,
-      x: {label: null, grid: true, ticks: 4, tickFormat: brlCompact},
-      y: {label: null},
-      marks: [
-        Plot.barX(porCategoria, {y: "categoria", x: "valor", sort: {y: "-x"}, fill: pal.accent, rx: 3, tip: {format: {x: brl}}}),
-        Plot.ruleX([0])
-      ]
-    }))}
+    ${resize((width) => hbars(porCategoria, {width, y: "categoria", fill: pal.accent, limit: 10, maxMargin: 180}))}
   </div>
 </div>
 
@@ -118,7 +114,11 @@ const mediaGeral = d3.mean(
   })}
 </div>
 
-${seusCeis.length ? html`<div class="warning"><p><strong>Pagamentos a fornecedores com sanção vigente no CEIS:</strong></p><ul>${seusCeis.map((d) => html`<li>${d.fornecedor} — ${brl(d.valor)} (${d.categoria}); sanção: ${d.sancao}, ${d.orgao}, abrangência: ${d.abrangencia}</li>`)}</ul><p class="small">Muitas sanções valem só para o órgão que as aplicou; isto não indica irregularidade por si só.</p></div>` : ""}
+```js
+// A JS block, not inline: Markdown would mangle the ${} inside the tag's label attribute.
+// Displayed only when there is a match (an expression block would print `null`).
+if (seusCeis.length) display(html`<div class="caution" label=${`${seusCeis.length} fornecedor${seusCeis.length > 1 ? "es" : ""} com sanção vigente no CEIS`}><p><strong>Pagamentos feitos durante a sanção:</strong></p><ul>${seusCeis.map((d) => html`<li>${d.fornecedor} — ${brl(d.valor)} (${d.categoria}); sanção: ${d.sancao}, ${d.orgao}, abrangência: ${d.abrangencia}</li>`)}</ul><p class="small">Muitas sanções valem só para o órgão que as aplicou; isto não indica irregularidade por si só.</p></div>`);
+```
 
 ## Emendas
 
@@ -128,6 +128,7 @@ const porFuncao = d3.rollups(suasEmendas, (v) => d3.sum(v, (d) => d.pago_total),
 const recebido = d3.rollup(emendasMun.filter((d) => d.deputado_id === id), (v) => d3.sum(v, (d) => d.valor), (d) => d.municipio_code);
 const munByCode = new Map(municipios.map((d) => [d.code, d]));
 const featMun = topojson.feature(malhaMun, malhaMun.objects.BRMU).features;
+const featUf = topojson.feature(malhaUf, malhaUf.objects.BRUF).features;
 // Zoom on the deputy's state plus anywhere else their emendas reached.
 const recorte = featMun.filter((f) => munByCode.get(+f.properties.codarea)?.uf === deputado.uf || recebido.has(+f.properties.codarea));
 ```
@@ -141,21 +142,15 @@ ${suasEmendas.length === 0 ? html`<p class="note">Nenhuma emenda individual vinc
       width,
       height: 260,
       marginLeft: 60,
-      x: {label: null, tickFormat: "d", type: "band"},
+      // Every other year when the card is too narrow for all labels.
+      x: {label: null, type: "band", tickFormat: (d) => (porAno.length * 38 > width && d % 2 ? "" : String(d))},
       y: {label: null, grid: true, tickFormat: brlCompact},
-      marks: [Plot.barY(porAno, {x: "ano", y: "valor", fill: pal.accent, rx: 3, tip: {format: {y: brl}}}), Plot.ruleY([0])]
+      marks: [Plot.barY(porAno, {x: "ano", y: "valor", fill: pal.accent, ry1: 4, tip: {format: {y: brl}}}), Plot.ruleY([0])]
     }))}
   </div>
   <div class="card">
     <h2>Por função de governo</h2>
-    ${resize((width) => Plot.plot({
-      width,
-      height: 260,
-      marginLeft: 150,
-      x: {label: null, grid: true, ticks: 3, tickFormat: brlCompact},
-      y: {label: null},
-      marks: [Plot.barX(porFuncao, {y: "funcao", x: "valor", sort: {y: "-x", limit: 10}, fill: pal.accent, rx: 3, tip: {format: {x: brl}}}), Plot.ruleX([0])]
-    }))}
+    ${resize((width) => hbars(porFuncao, {width, y: "funcao", fill: pal.accent, limit: 10, maxMargin: 160}))}
   </div>
 </div>
 
@@ -168,6 +163,7 @@ ${suasEmendas.length === 0 ? html`<p class="note">Nenhuma emenda individual vinc
     label: "Recebido",
     format: brl,
     noData: pal.noData,
+    borders: featUf.filter((f) => recorte.some((m) => Math.floor(+m.properties.codarea / 1e5) === +f.properties.codarea)),
     title: (code) => `${munByCode.get(code)?.nome} (${munByCode.get(code)?.uf})`
   })) : html`<p class="muted">Sem pagamentos a favorecidos identificados.</p>`}
 </div>

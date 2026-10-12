@@ -5,19 +5,24 @@ import * as d3 from "npm:d3";
  * has no hierarchical layout.
  *
  * Groups get categorical hues in fixed order (folded to `maxGroups`, the rest
- * as "Outros"); items are the cells. Hover shows a tooltip; cells too small
- * for a label stay unlabeled.
+ * as "Outros"); items are the cells. Pass `color` (group -> colour) instead to
+ * keep a fixed mapping, e.g. party colours; groups are then used as given.
+ * Hover shows a tooltip; cells too small for a label stay unlabeled.
  *
  * @param data   [{group, item, value}]
- * @param opts   {width, height, colors: string[], format: number -> string}
+ * @param opts   {width, height, colors: string[], color: group -> string,
+ *                format: number -> string, maxGroups}
  */
-export function treemap(data, {width, height = 480, colors, format = String, maxGroups = 6} = {}) {
-  // Fold small groups into "Outros" so we never generate a 9th hue.
-  const totals = d3.rollups(data, (v) => d3.sum(v, (d) => d.value), (d) => d.group).sort((a, b) => b[1] - a[1]);
-  const keep = new Set(totals.slice(0, maxGroups).map(([g]) => g));
-  const folded = data.map((d) => (keep.has(d.group) ? d : {...d, group: "Outros"}));
-  const groups = [...keep, ...(folded.some((d) => d.group === "Outros") ? ["Outros"] : [])];
-  const color = d3.scaleOrdinal(groups, [...colors.slice(0, maxGroups), "var(--theme-foreground-faint)"]);
+export function treemap(data, {width, height = 480, colors, color, format = String, maxGroups = 6} = {}) {
+  let folded = data;
+  if (!color) {
+    // Fold small groups into "Outros" so we never generate a 9th hue.
+    const totals = d3.rollups(data, (v) => d3.sum(v, (d) => d.value), (d) => d.group).sort((a, b) => b[1] - a[1]);
+    const keep = new Set(totals.slice(0, maxGroups).map(([g]) => g));
+    folded = data.map((d) => (keep.has(d.group) ? d : {...d, group: "Outros"}));
+    const groups = [...keep, ...(folded.some((d) => d.group === "Outros") ? ["Outros"] : [])];
+    color = d3.scaleOrdinal(groups, [...colors.slice(0, maxGroups), "var(--theme-foreground-faint)"]);
+  }
 
   const tree = {
     name: "root",
@@ -79,7 +84,7 @@ export function treemap(data, {width, height = 480, colors, format = String, max
     .append("text")
     .attr("x", 4)
     .attr("y", 14)
-    .attr("fill", "white")
+    .attr("fill", (d) => ink(color(d.parent.data.name)))
     .call((t) => t.append("tspan").attr("font-weight", 600).text((d) => d.data.name))
     .call((t) => t.append("tspan").attr("x", 4).attr("dy", 13).attr("fill-opacity", 0.85).text((d) => format(d.value)))
     .each(function (d) {
@@ -87,6 +92,13 @@ export function treemap(data, {width, height = 480, colors, format = String, max
     });
 
   return svg.node();
+}
+
+// White or near-black text, whichever reads on the cell's fill (opacity 0.85
+// over the page background is close enough to the fill itself).
+function ink(fill) {
+  const c = d3.lab(fill);
+  return Number.isNaN(c.l) || c.l < 62 ? "white" : "#1b1e23";
 }
 
 // Truncate an SVG text node with an ellipsis so it fits in `maxWidth` pixels.

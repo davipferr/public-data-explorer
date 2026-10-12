@@ -11,6 +11,8 @@ import {brl, brlCompact, num, pct, rows} from "./components/format.js";
 import {palette} from "./components/palette.js";
 import {choropleth} from "./components/choropleth.js";
 import {treemap} from "./components/treemap.js";
+import {hbars} from "./components/charts.js";
+import {grupoPartido, OUTROS, partyColor} from "./components/parties.js";
 
 const emendas = rows(await FileAttachment("data/emendas.parquet").parquet());
 const emendasMun = rows(await FileAttachment("data/emendas-municipios.parquet").parquet());
@@ -49,6 +51,19 @@ const anoAtual = anos.at(-1);
 const porAnoTipo = d3
   .rollups(dados, (v) => d3.sum(v, (d) => d.pago_total), (d) => d.ano, (d) => d.tipo_grupo)
   .flatMap(([ano, tipos]) => tipos.map(([tipo, valor]) => ({ano, tipo, valor})));
+const totalAno = d3.rollup(porAnoTipo, (v) => d3.sum(v, (d) => d.valor), (d) => d.ano);
+const valorDe = (ano, tipo) => d3.sum(porAnoTipo.filter((d) => d.ano === ano && d.tipo === tipo), (d) => d.valor);
+// Annotations only for years and types inside the current filter.
+const notas = [
+  filtros.tipos.includes("Relator") && totalAno.has(2020) && {
+    ano: 2020,
+    texto: `Emendas de relator (RP9), o “orçamento secreto”: ${brlCompact(valorDe(2020, "Relator"))} em 2020`
+  },
+  totalAno.has(2023) && {
+    ano: 2023,
+    texto: `Após o STF derrubar o RP9 (dez/2022), individuais e de comissão crescem`
+  }
+].filter(Boolean).map((d) => ({...d, valor: totalAno.get(d.ano)}));
 ```
 
 <div class="card">
@@ -59,11 +74,12 @@ const porAnoTipo = d3
     height: 340,
     marginLeft: 60,
     x: {label: null, tickFormat: "d", type: "band"},
-    y: {label: null, grid: true, tickFormat: brlCompact},
+    y: {label: null, grid: true, tickFormat: brlCompact, insetTop: notas.length ? 70 : 0},
     color: {legend: true, domain: TIPOS, range: pal.categorical.slice(0, 4)},
     marks: [
-      Plot.barY(porAnoTipo, {x: "ano", y: "valor", fill: "tipo", order: TIPOS, stroke: "var(--theme-background)", strokeWidth: 1, tip: {format: {y: brl}}}),
-      Plot.ruleY([0])
+      Plot.barY(porAnoTipo, {x: "ano", y: "valor", fill: "tipo", order: TIPOS, stroke: "var(--theme-background-alt)", strokeWidth: 1.5, tip: {format: {y: brl}}}),
+      Plot.ruleY([0]),
+      Plot.tip(notas, {x: "ano", y: "valor", title: "texto", anchor: "bottom", lineWidth: width < 600 ? 14 : 22, fontSize: 11, pointerEvents: "none"})
     ]
   }))}
 </div>
@@ -78,18 +94,37 @@ const perCapita = new Map([...recebido].filter(([c]) => pop.get(c) > 0).map(([c,
 const featMun = topojson.feature(malhaMun, malhaMun.objects.BRMU).features;
 const featUf = topojson.feature(malhaUf, malhaUf.objects.BRUF).features;
 const nAnos = filtros.ate - filtros.de + 1;
+const ufs = [...new Set(municipios.map((d) => d.uf))].sort();
+```
+
+```js
+const ufInput = Inputs.select(["Brasil", ...ufs], {label: "Mapa", value: "Brasil"});
+const ufMapa = view(ufInput);
+```
+
+```js
+// Clicking a municipality on the national map zooms into its state.
+function ampliar(code) {
+  if (ufInput.value !== "Brasil") return;
+  ufInput.value = munByCode.get(code)?.uf ?? "Brasil";
+  ufInput.dispatchEvent(new Event("input", {bubbles: true}));
+}
+const featMapa = ufMapa === "Brasil" ? featMun : featMun.filter((f) => munByCode.get(+f.properties.codarea)?.uf === ufMapa);
+const ufCode = municipios.find((d) => d.uf === ufMapa)?.uf_code;
+const bordasMapa = ufMapa === "Brasil" ? featUf : featUf.filter((f) => +f.properties.codarea === ufCode);
 ```
 
 <div class="card">
-  <h2>Recebido por habitante, ${filtros.de}–${filtros.ate}</h2>
-  <h3>Pagamentos a favorecidos sediados em cada município ÷ população estimada; faixas com o mesmo número de municípios</h3>
-  ${resize((width) => choropleth(featMun, perCapita, {
+  <h2>Recebido por habitante, ${filtros.de}–${filtros.ate} — ${ufMapa}</h2>
+  <h3>Pagamentos a favorecidos sediados em cada município ÷ população estimada; faixas com o mesmo número de municípios${ufMapa === "Brasil" ? ". Clique num município para ampliar o estado" : ""}</h3>
+  ${resize((width) => choropleth(featMapa, perCapita, {
     width,
     color: {type: "quantile", n: 7, range: pal.blues(7), tickFormat: (d) => brl(d)},
     label: "R$ por habitante",
     format: (v) => `${brl(v)} por habitante (${brl(v / nAnos)}/ano)`,
     noData: pal.noData,
-    borders: featUf,
+    borders: bordasMapa,
+    onSelect: ufMapa === "Brasil" ? ampliar : null,
     title: (code) => `${munByCode.get(code)?.nome} (${munByCode.get(code)?.uf})`
   }))}
   <p class="muted">O município é o do <em>favorecido</em> (prefeitura, empresa, ONG) que recebeu o pagamento — o arquivo traz só nome e UF, ligados ao código IBGE por nome normalizado, tabela de renomeações e correspondência aproximada. Capitais concentram favorecidos estaduais e federais, o que infla seus valores.</p>
@@ -106,8 +141,8 @@ const porDeputado = d3
 
 <div class="card">
   <h2>Emendas individuais de deputados, por partido e deputado</h2>
-  <h3>Área proporcional ao valor pago no período; os 8 partidos com mais recursos têm cor própria. Passe o mouse para detalhes.</h3>
-  ${resize((width) => treemap(porDeputado.map((d) => ({group: d.partido ?? "Sem partido", item: `${d.nome} (${d.uf})`, value: d.valor})), {width, height: 520, colors: pal.categorical, format: brlCompact, maxGroups: 8}))}
+  <h3>Área proporcional ao valor pago no período; as sete maiores bancadas têm cor própria, as demais aparecem em “Outros”. Passe o mouse para detalhes.</h3>
+  ${resize((width) => treemap(porDeputado.map((d) => ({group: grupoPartido(d.partido), item: `${d.nome} (${d.partido ?? "s/ partido"}-${d.uf})`, value: d.valor})), {width, height: 520, color: (g) => partyColor(pal, g), format: brlCompact}))}
   <p class="muted">Partido do deputado na legislatura da emenda (última filiação registrada pela Câmara naquela legislatura). Treemap desenhado com D3 — o Plot não tem layouts hierárquicos.</p>
 </div>
 
@@ -119,25 +154,11 @@ const porAutorTipo = d3.rollups(dados, (v) => d3.sum(v, (d) => d.pago_total), (d
 <div class="grid grid-cols-2">
   <div class="card">
     <h2>Por função de governo</h2>
-    ${resize((width) => Plot.plot({
-      width,
-      height: 380,
-      marginLeft: 150,
-      x: {label: null, grid: true, ticks: 4, tickFormat: brlCompact},
-      y: {label: null},
-      marks: [Plot.barX(porFuncao, {y: "funcao", x: "valor", sort: {y: "-x", limit: 15}, fill: pal.accent, rx: 3, tip: {format: {x: brl}}}), Plot.ruleX([0])]
-    }))}
+    ${resize((width) => hbars(porFuncao, {width, y: "funcao", fill: pal.accent, limit: 15, maxMargin: 160}))}
   </div>
   <div class="card">
     <h2>Por tipo de autor</h2>
-    ${resize((width) => Plot.plot({
-      width,
-      height: 220,
-      marginLeft: 110,
-      x: {label: null, grid: true, ticks: 4, tickFormat: brlCompact},
-      y: {label: null},
-      marks: [Plot.barX(porAutorTipo, {y: "autor_tipo", x: "valor", sort: {y: "-x"}, fill: pal.accent, rx: 3, tip: {format: {x: brl}}}), Plot.ruleX([0])]
-    }))}
+    ${resize((width) => hbars(porAutorTipo, {width, y: "autor_tipo", fill: pal.accent, maxMargin: 120}))}
     <p class="muted">Autores individuais que não correspondem a nenhum deputado das legislaturas 55–57 são, na prática, senadores.</p>
   </div>
 </div>

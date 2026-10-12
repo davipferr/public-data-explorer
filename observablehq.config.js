@@ -12,8 +12,14 @@ export default {
     {name: "Consulta SQL", path: "/sql"},
     {name: "Sobre os dados", path: "/sobre"}
   ],
-  head: '<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📊</text></svg>">',
-  theme: ["air", "near-midnight", "alt", "wide"],
+  head: [
+    '<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📊</text></svg>">',
+    '<link rel="preconnect" href="https://fonts.googleapis.com">',
+    '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>',
+    '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap">'
+  ].join("\n"),
+  // Theme imports + typography live in src/style.css.
+  style: "style.css",
   footer: "Dados: IBGE, Câmara dos Deputados, Portal da Transparência (CGU). Processados em tempo de build com Polars + DuckDB.",
   toc: true,
   search: true,

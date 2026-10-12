@@ -9,6 +9,8 @@ A Cota para o Exercício da Atividade Parlamentar reembolsa despesas como passag
 ```js
 import {brl, brlCompact, MESES, num, numCompact, rows} from "./components/format.js";
 import {palette} from "./components/palette.js";
+import {eleicoesMarks, hbars, labelMargin, picoMark} from "./components/charts.js";
+import {grupoPartido, partyScale} from "./components/parties.js";
 
 const ceap = rows(await FileAttachment("data/ceap.parquet").parquet());
 const fornecedores = rows(await FileAttachment("data/ceap-fornecedores.parquet").parquet());
@@ -64,14 +66,16 @@ const ultimoMes = d3.max(mensal, (d) => d.data);
     height: 280,
     marginLeft: 60,
     x: {type: "utc", label: null},
-    y: {label: null, grid: true, tickFormat: brlCompact},
+    y: {label: null, grid: true, tickFormat: brlCompact, insetTop: 22},
     marks: [
-      Plot.rectY(mensal, {x: "data", interval: "month", y: "valor", fill: (d) => (+d.data > +d3.utcMonth.offset(ultimoMes, -3) ? pal.muted : pal.accent), inset: 1, rx: 2}),
+      Plot.rectY(mensal, {x: "data", interval: "month", y: "valor", fill: (d) => (+d.data > +d3.utcMonth.offset(ultimoMes, -3) ? pal.muted : pal.accent), inset: 1, ry1: 2}),
       Plot.ruleY([0]),
+      ...eleicoesMarks(d3.extent(mensal, (d) => d.data), {width}),
+      picoMark(mensal, (d) => `Pico: ${MESES[d.mes - 1]}/${d.ano}, ${brlCompact(d.valor)}`),
       Plot.tip(mensal, Plot.pointerX({x: "data", y: "valor", title: (d) => `${MESES[d.mes - 1]}/${d.ano}\n${brl(d.valor)}`}))
     ]
   }))}
-  <p class="muted">Em cinza, os meses mais recentes — ainda incompletos.</p>
+  <p class="muted">Em cinza, os meses mais recentes — ainda incompletos. As linhas verticais marcam o primeiro turno das eleições.</p>
 </div>
 
 ```js
@@ -85,31 +89,19 @@ const porDeputado = d3
 <div class="grid grid-cols-2">
   <div class="card">
     <h2>Por categoria</h2>
-    ${resize((width) => Plot.plot({
-      width,
-      height: 520,
-      marginLeft: 200,
-      x: {label: null, grid: true, ticks: 4, tickFormat: brlCompact},
-      y: {label: null},
-      marks: [
-        Plot.barX(porCategoria, {y: "categoria", x: "valor", sort: {y: "-x"}, fill: pal.accent, rx: 3, tip: {format: {x: brl}}}),
-        Plot.ruleX([0])
-      ]
-    }))}
+    ${resize((width) => hbars(porCategoria, {width, y: "categoria", fill: pal.accent}))}
   </div>
   <div class="card">
     <h2>Maiores gastos individuais</h2>
-    <h3>Os 20 parlamentares com mais reembolsos no recorte</h3>
-    ${resize((width) => Plot.plot({
+    <h3>Os 20 parlamentares com mais reembolsos no recorte, na cor do partido</h3>
+    ${resize((width) => hbars(porDeputado, {
       width,
-      height: 520,
-      marginLeft: 170,
-      x: {label: null, grid: true, ticks: 4, tickFormat: brlCompact},
-      y: {label: null},
-      marks: [
-        Plot.barX(porDeputado.slice(0, 20), {y: (d) => `${d.nome} (${d.partido}-${d.uf})`, x: "valor", sort: {y: "-x"}, fill: pal.accent, rx: 3, href: (d) => `./perfil#${d.id}`, tip: {format: {x: brl}}}),
-        Plot.ruleX([0])
-      ]
+      limit: 20,
+      y: (d) => `${d.nome} (${d.partido}-${d.uf})`,
+      fill: (d) => grupoPartido(d.partido),
+      color: partyScale(pal, {legend: true}),
+      href: (d) => `./perfil#${d.id}`,
+      maxMargin: 190
     }))}
     <p class="muted">Clique numa barra para abrir o perfil. Deputados com mandato mais longo no período naturalmente acumulam mais.</p>
   </div>
@@ -129,17 +121,21 @@ const porPartido = d3
 
 <div class="card">
   <h2>Gasto médio por deputado e mês, por partido</h2>
-  <h3>Partidos com pelo menos 5 deputados no recorte; a linha marca a média geral</h3>
+  <h3>Partidos com pelo menos 5 deputados no recorte; a linha tracejada marca a média geral</h3>
   ${resize((width) => Plot.plot({
     width,
-    height: Math.max(220, porPartido.length * 22),
-    marginLeft: 110,
-    x: {label: "por deputado-mês", grid: true, tickFormat: brlCompact},
-    y: {label: null},
+    height: Math.max(220, porPartido.length * 26 + 50),
+    marginLeft: Math.min(110, labelMargin(width, 110)),
+    marginRight: 24,
+    marginTop: 28,
+    x: {label: "por deputado-mês", grid: true, tickFormat: brlCompact, ticks: width < 500 ? 3 : 6},
+    y: {label: null, tickSize: 0},
+    color: partyScale(pal, {legend: true}),
     marks: [
-      Plot.barX(porPartido, {y: "partido", x: "media", sort: {y: "-x"}, fill: pal.accent, rx: 3, channels: {deputados: "deputados"}, tip: {format: {x: brl}}}),
-      Plot.ruleX([total / deputadoMeses], {stroke: "currentColor", strokeDasharray: "4,3"}),
-      Plot.ruleX([0])
+      Plot.ruleY(porPartido, {y: "partido", x1: 0, x2: "media", stroke: "currentColor", strokeOpacity: 0.25, strokeWidth: 2, sort: {y: "-x2"}}),
+      Plot.ruleX([total / deputadoMeses], {stroke: "currentColor", strokeOpacity: 0.7, strokeDasharray: "4,3"}),
+      Plot.text([total / deputadoMeses], {x: (d) => d, frameAnchor: "top", dy: -18, textAnchor: "middle", text: (d) => `média geral: ${brlCompact(d)}`, fill: "currentColor", fontSize: 11}),
+      Plot.dot(porPartido, {y: "partido", x: "media", r: 6, fill: (d) => grupoPartido(d.partido), stroke: "var(--theme-background-alt)", strokeWidth: 2, channels: {deputados: "deputados"}, tip: {format: {x: brl, fill: false}}})
     ]
   }))}
 </div>

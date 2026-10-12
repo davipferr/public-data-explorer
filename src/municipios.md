@@ -35,12 +35,24 @@ const metricas = new Map([
   [`Crescimento desde o Censo 2022`, {key: "crescimento", fmt: pct, scale: "diverging"}]
 ]);
 const metricaNome = view(Inputs.radio([...metricas.keys()], {label: "Indicador", value: [...metricas.keys()][0]}));
-const ufSel = view(Inputs.select(["Brasil", ...ufs], {label: "Recorte", value: "Brasil"}));
+const ufInput = Inputs.select(["Brasil", ...ufs], {label: "Recorte", value: "Brasil"});
+const ufSel = view(ufInput);
+```
+
+```js
+// Clicking a municipality on the national map zooms into its state (same as the select).
+function ampliar(code) {
+  if (ufInput.value !== "Brasil") return;
+  ufInput.value = byCode.get(code)?.uf ?? "Brasil";
+  ufInput.dispatchEvent(new Event("input", {bubbles: true}));
+}
 ```
 
 ```js
 const metrica = metricas.get(metricaNome);
 const recorte = ufSel === "Brasil" ? featMun : featMun.filter((f) => byCode.get(+f.properties.codarea)?.uf === ufSel);
+const ufCode = municipios.find((d) => d.uf === ufSel)?.uf_code;
+const bordas = ufSel === "Brasil" ? featUf : featUf.filter((f) => +f.properties.codarea === ufCode);
 const valores = new Map(municipios.map((d) => [d.code, d[metrica.key]]));
 const colorScale =
   metrica.scale === "diverging"
@@ -50,14 +62,15 @@ const colorScale =
 
 <div class="card">
   <h2>${metricaNome} — ${ufSel}</h2>
-  <h3>${metrica.scale === "quantile" ? "Cores em 7 faixas com o mesmo número de municípios (quantis)" : "Azul: cresceu; vermelho: encolheu em relação ao Censo 2022"}</h3>
+  <h3>${metrica.scale === "quantile" ? "Cores em 7 faixas com o mesmo número de municípios (quantis)" : "Azul: cresceu; vermelho: encolheu em relação ao Censo 2022"}${ufSel === "Brasil" ? ". Clique num município para ampliar o estado" : ""}</h3>
   ${resize((width) => choropleth(recorte, valores, {
     width,
     color: colorScale,
     label: metricaNome,
     format: metrica.fmt,
     noData: pal.noData,
-    borders: ufSel === "Brasil" ? featUf : null,
+    borders: bordas,
+    onSelect: ufSel === "Brasil" ? ampliar : null,
     title: (code) => `${byCode.get(code)?.nome} (${byCode.get(code)?.uf})`
   }))}
 </div>
@@ -113,11 +126,14 @@ const estAntes = d3.greatest(estimativas.filter((d) => d.ano < 2022), (d) => d.a
         width,
         height: 520,
         marginLeft: 36,
-        x: {label: "crescimento", tickFormat: (d) => pct(d), grid: true},
-        y: {label: null},
+        marginRight: 48,
+        x: {axis: null, insetLeft: d3.min(cresc, (d) => d.valor) < 0 ? 44 : 0},
+        y: {label: null, tickSize: 0},
         marks: [
-          Plot.barX(cresc, {y: "uf", x: "valor", sort: {y: "-x"}, fill: (d) => (d.valor >= 0 ? pal.diverging.pos : pal.diverging.neg), rx: 3, tip: {format: {x: (d) => pct(d), fill: false}}}),
-          Plot.ruleX([0])
+          Plot.barX(cresc, {y: "uf", x: "valor", sort: {y: "-x"}, fill: (d) => (d.valor >= 0 ? pal.diverging.pos : pal.diverging.neg), insetTop: 2, insetBottom: 2, tip: {format: {x: (d) => pct(d), fill: false}}}),
+          Plot.text(cresc.filter((d) => d.valor >= 0), {y: "uf", x: "valor", text: (d) => pct(d.valor), dx: 4, textAnchor: "start", fill: "currentColor", fontSize: 11}),
+          Plot.text(cresc.filter((d) => d.valor < 0), {y: "uf", x: "valor", text: (d) => pct(d.valor), dx: -4, textAnchor: "end", fill: "currentColor", fontSize: 11}),
+          Plot.ruleX([0], {strokeOpacity: 0.4})
         ]
       });
     })}
@@ -129,6 +145,13 @@ const estAntes = d3.greatest(estimativas.filter((d) => d.ano < 2022), (d) => d.a
 ```js
 const destacar = ufSel === "Brasil" ? null : ufSel;
 const comDados = municipios.filter((d) => d.pop_est > 0 && d.pib_pc > 0);
+// Outliers worth naming: the richest per capita and the two most populous, within the
+// current cut. The next-richest sit right next to the richest, so their labels would collide.
+const noRecorte = destacar ? comDados.filter((d) => d.uf === destacar) : comDados;
+const rotulos = [
+  ...d3.sort(noRecorte, (d) => -d.pib_pc).slice(0, 1),
+  ...d3.sort(noRecorte, (d) => -d.pop_est).slice(0, 2)
+].filter((d, i, a) => a.indexOf(d) === i);
 ```
 
 <div class="card">
@@ -138,10 +161,15 @@ const comDados = municipios.filter((d) => d.pop_est > 0 && d.pib_pc > 0);
     width,
     height: 460,
     x: {type: "log", label: `população estimada (${popAno})`, ticks: [1e3, 1e4, 1e5, 1e6, 1e7], tickFormat: (d) => numCompact(d)},
-    y: {type: "log", label: `PIB per capita (${pibAno})`, ticks: [5e3, 1e4, 2e4, 5e4, 1e5, 2e5, 5e5], tickFormat: (d) => brlCompact(d), grid: true},
+    y: {type: "log", insetTop: 14, label: `PIB per capita (${pibAno})`, ticks: [5e3, 1e4, 2e4, 5e4, 1e5, 2e5, 5e5], tickFormat: (d) => brlCompact(d), grid: true},
     marks: [
       Plot.dot(comDados, {x: "pop_est", y: "pib_pc", r: 2, fill: destacar ? pal.muted : pal.accent, fillOpacity: destacar ? 0.5 : 0.35}),
       destacar ? Plot.dot(comDados.filter((d) => d.uf === destacar), {x: "pop_est", y: "pib_pc", r: 3.5, fill: pal.accent, stroke: "var(--theme-background)", strokeWidth: 1}) : null,
+      Plot.dot(rotulos, {x: "pop_est", y: "pib_pc", r: 4, fill: pal.accent, stroke: "var(--theme-background-alt)", strokeWidth: 2}),
+      // Big cities sit at the right edge: label them on the left of the dot.
+      ...[["start", 8, (d) => d.pop_est <= 2e6], ["end", -8, (d) => d.pop_est > 2e6]].map(([textAnchor, dx, lado]) =>
+        Plot.text(rotulos.filter(lado), {x: "pop_est", y: "pib_pc", text: (d) => `${d.nome} (${d.uf})`, dx, textAnchor, fill: "currentColor", fontSize: 11, stroke: "var(--theme-background-alt)", strokeWidth: 3, paintOrder: "stroke"})
+      ),
       Plot.tip(comDados, Plot.pointer({x: "pop_est", y: "pib_pc", title: (d) => `${d.nome} (${d.uf})\n${num(d.pop_est)} habitantes\nPIB per capita: ${brlCompact(d.pib_pc)}`}))
     ]
   }))}
