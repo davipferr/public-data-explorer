@@ -43,7 +43,8 @@ The first run makes one request per municipality (~5,600; ≈ 70 min at the defa
 
 ```
 pipeline/            Python package: one module per concern
-  http.py            cached downloads, retries, rate limiting, gzip quirks
+  http.py            cached downloads (one shared connection), retries, rate limiting, gzip quirks
+  schema.py          fails fast with a clear message when a source renames/drops a column
   clean.py           accents, Brazilian numbers, IBGE code normalisation
   ibge.py            SIDRA reshaping, municipalities, meshes
   camara.py          deputies (API) + CEAP (bulk CSVs)
@@ -51,6 +52,7 @@ pipeline/            Python package: one module per concern
   matching.py        record linkage (DuckDB): names -> IBGE codes, authors -> deputies
   frames.py          cleaned frames memoised as Parquet, shared across loaders
   io.py              stdout writers; casts int64 -> int32 so JS doesn't get BigInt
+  manifest.py        data manifest (sources, row counts, totals) and build-to-build comparison
 src/data/*.py        Framework data loaders (thin; run via `uv run`, see observablehq.config.js)
 src/components/      formatting (pt-BR), palette, choropleth (Plot), treemap (D3)
 src/*.md             pages
@@ -71,6 +73,18 @@ tests/               offline tests for cleaning, SIDRA reshape and matching
 ## Refreshing data
 
 Framework caches each loader's output in `src/.observablehq/cache` and only reruns a loader when its own file changes. The memoised cleaned frames in `data_cache/frames` are keyed by a hash of the `pipeline/` source, so they rebuild automatically after any code change (also in CI, where `data_cache/` is restored from the previous run). Framework's own loader cache doesn't see `pipeline/` changes, though: locally, run `npm run clean` to force the loaders to rerun (it keeps raw downloads). Raw downloads in `data_cache/` expire on their own (3–90 days depending on the source); delete the folder to start fresh.
+
+## Data manifest
+
+Each build writes `manifest.json`: the pipeline code version, the commit, when each raw source was downloaded, and row counts / totals (overall and per year) of every cleaned table. `npm run build` copies it to a stable path, `dist/manifest.json`, so it is served at `<site>/manifest.json`.
+
+In CI, before deploying, the workflow downloads the live manifest and runs
+
+```bash
+uv run python -m pipeline.manifest compare previous-manifest.json dist/manifest.json
+```
+
+The changed metrics go to the job summary. Drops above 10 %, metrics that disappear (e.g. a whole CEAP year) and removed output columns become warnings. Add `--strict` in the workflow to block the deploy on warnings.
 
 ## Tests
 

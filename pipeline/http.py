@@ -7,6 +7,7 @@ re-download of everything.
 
 from __future__ import annotations
 
+import atexit
 import gzip
 import hashlib
 import os
@@ -40,6 +41,28 @@ def _cache_path(url: str, params: dict | None, suffix: str) -> Path:
     return CACHE_DIR / f"{digest}{suffix}"
 
 
+def cached_path(url: str, params: dict | None = None, suffix: str = ".bin") -> Path | None:
+    """Where ``fetch`` stored this request, or None if it was never downloaded.
+
+    ``suffix`` must match the one passed to ``fetch``. Ignores ``max_age``.
+    """
+    path = _cache_path(url, params, suffix)
+    return path if path.exists() else None
+
+
+_client: httpx.Client | None = None
+
+
+def _get_client() -> httpx.Client:
+    """One client per process, so consecutive requests to the same host reuse the
+    TLS connection (thousands of API calls for Bolsa Família, Câmara pagination)."""
+    global _client
+    if _client is None:
+        _client = httpx.Client(follow_redirects=True)
+        atexit.register(_client.close)
+    return _client
+
+
 def _maybe_gunzip(data: bytes) -> bytes:
     # IBGE's servicodados sometimes sends gzip bodies without a Content-Encoding
     # header, so httpx can't transparently decode them.
@@ -69,8 +92,7 @@ def fetch(
     delay = 2.0
     for attempt in range(1, retries + 1):
         try:
-            with httpx.Client(follow_redirects=True, timeout=timeout) as client:
-                resp = client.get(url, params=params, headers=hdrs)
+            resp = _get_client().get(url, params=params, headers=hdrs, timeout=timeout)
             if resp.status_code in (403, 404):
                 raise NotFound(f"{resp.status_code} for {url}")
             if resp.status_code in RETRY_STATUS:

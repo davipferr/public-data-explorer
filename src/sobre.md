@@ -5,21 +5,21 @@ title: Sobre os dados
 # Sobre os dados
 
 ```js
-import {brlCompact, num, pct} from "./components/format.js";
-const q = await FileAttachment("data/qualidade.json").json();
+import { brlCompact, num, pct } from "./components/format.js";
+const q = await FileAttachment("data/qualidade.json").json()
 ```
 
-Este é um site estático. Os dados são baixados e limpos **em tempo de build** por *data loaders* em Python (Polars + DuckDB) do Observable Framework; o navegador recebe apenas arquivos Parquet/JSON prontos. Última geração: **${new Date(q.gerado_em).toLocaleString("pt-BR")}**.
+Este é um site estático. Os dados são baixados e limpos **em tempo de build** por _data loaders_ em Python (Polars + DuckDB) do Observable Framework; o navegador recebe apenas arquivos Parquet/JSON prontos. Última geração: **${new Date(q.gerado_em).toLocaleString("pt-BR")}**.
 
 ## Fontes
 
-| Fonte | Acesso | O que usamos |
-|---|---|---|
-| IBGE — SIDRA (`servicodados.ibge.gov.br/api/v3/agregados`) | API pública | População (Censo 2022, tabela 4709; estimativas, 6579) e PIB municipal (5938) |
-| IBGE — Localidades e Malhas (`/api/v1/localidades`, `/api/v3/malhas`) | API pública | Lista oficial de municípios e TopoJSON de UFs e municípios |
-| Câmara — dados abertos | Arquivos em massa + API (só a lista de deputados) | CEAP de ${q.ceap.anos.join(", ")}; cadastro de deputados |
-| Portal da Transparência — downloads | Arquivos em massa, sem chave | Emendas parlamentares (${q.emendas.anos[0]}–${q.emendas.anos.at(-1)}) e CEIS (snapshot de ${new Date(q.ceis.snapshot + "T12:00").toLocaleDateString("pt-BR")}) |
-| Portal da Transparência — API | Chave pessoal, só no build | Bolsa Família por município — <strong>${q.portal_api.chave_configurada ? "chave configurada" : "chave não configurada"}</strong> |
+| Fonte                                                                 | Acesso                                            | O que usamos                                                                                                                                                   |
+| --------------------------------------------------------------------- | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| IBGE — SIDRA (`servicodados.ibge.gov.br/api/v3/agregados`)            | API pública                                       | População (Censo 2022, tabela 4709; estimativas, 6579) e PIB municipal (5938)                                                                                  |
+| IBGE — Localidades e Malhas (`/api/v1/localidades`, `/api/v3/malhas`) | API pública                                       | Lista oficial de municípios e TopoJSON de UFs e municípios                                                                                                     |
+| Câmara — dados abertos                                                | Arquivos em massa + API (só a lista de deputados) | CEAP de ${q.ceap.anos.join(", ")}; cadastro de deputados                                                                                                       |
+| Portal da Transparência — downloads                                   | Arquivos em massa, sem chave                      | Emendas parlamentares (${q.emendas.anos[0]}–${q.emendas.anos.at(-1)}) e CEIS (snapshot de ${new Date(q.ceis.snapshot + "T12:00").toLocaleDateString("pt-BR")}) |
+| Portal da Transparência — API                                         | Chave pessoal, só no build                        | Bolsa Família por município — <strong>${q.portal_api.chave_configurada ? "chave configurada" : "chave não configurada"}</strong>                               |
 
 ## Limpeza
 
@@ -38,7 +38,14 @@ A lista oficial tem **${num(q.municipios.oficiais)}** municípios; a malha terri
 
 ```js
 q.municipios.fora_da_malha.length
-  ? html`<p>Fora da malha: ${q.municipios.fora_da_malha.map((d) => `${d.nome} (${d.uf}, ${d.code})`).join(", ")}. Municípios criados depois de 2022 também não têm população do Censo nem PIB.</p>`
+  ? html`<p>
+      Fora da malha:
+      ${q.municipios.fora_da_malha
+        .map((d) => `${d.nome} (${d.uf}, ${d.code})`)
+        .join(", ")}.
+      Municípios criados depois de 2022 também não têm população do Censo nem
+      PIB.
+    </p>`
   : html`<p>Todos os municípios oficiais estão na malha.</p>`
 ```
 
@@ -49,9 +56,14 @@ O arquivo de emendas por favorecido traz o município só como nome + UF. A liga
 ```js
 Inputs.table(q.favorecidos.correspondencia_municipio, {
   columns: ["match", "linhas", "valor", "parcela"],
-  header: {match: "Método", linhas: "Linhas", valor: "Valor", parcela: "Parcela do valor"},
-  format: {linhas: num, valor: brlCompact, parcela: pct},
-  layout: "auto"
+  header: {
+    match: "Método",
+    linhas: "Linhas",
+    valor: "Valor",
+    parcela: "Parcela do valor",
+  },
+  format: { linhas: num, valor: brlCompact, parcela: pct },
+  layout: "auto",
 })
 ```
 
@@ -61,9 +73,14 @@ Inputs.table(q.favorecidos.correspondencia_municipio, {
 ```js
 Inputs.table(q.favorecidos.nomes_corrigidos, {
   columns: ["uf", "municipio_nome", "nome_ibge", "match"],
-  header: {uf: "UF", municipio_nome: "Nome no Portal", nome_ibge: "Nome no IBGE", match: "Método"},
+  header: {
+    uf: "UF",
+    municipio_nome: "Nome no Portal",
+    nome_ibge: "Nome no IBGE",
+    match: "Método",
+  },
   layout: "auto",
-  rows: 30
+  rows: 30,
 })
 ```
 
@@ -71,7 +88,7 @@ Inputs.table(q.favorecidos.nomes_corrigidos, {
 
 ### Autor da emenda → deputado
 
-Emendas trazem o nome parlamentar em maiúsculas, sem identificador da Câmara. A chave de comparação remove acentos, partículas (*da, de, do…*) e o sufixo “(EX-PARLAMENTAR …)” usado quando a emenda passa a um sucessor. Quando dois deputados têm o mesmo nome parlamentar, vale o da legislatura em que a emenda foi apresentada (ano anterior ao orçamento) e da mesma UF.
+Emendas trazem o nome parlamentar em maiúsculas, sem identificador da Câmara. A chave de comparação remove acentos, partículas (_da, de, do…_) e o sufixo “(EX-PARLAMENTAR …)” usado quando a emenda passa a um sucessor. Quando dois deputados têm o mesmo nome parlamentar, vale o da legislatura em que a emenda foi apresentada (ano anterior ao orçamento) e da mesma UF.
 
 Resultado: **${num(q.emendas.autores_vinculados_a_deputados)}** de **${num(q.emendas.autores_individuais)}** autores de emendas individuais foram ligados a deputados das legislaturas 55–57. Os demais são, em sua grande maioria, senadores.
 
@@ -82,9 +99,14 @@ Nem toda emenda tem município de destino — boa parte é destinada a “múlti
 ```js
 Inputs.table(q.emendas.por_escopo, {
   columns: ["escopo", "linhas", "valor", "parcela"],
-  header: {escopo: "Localidade de aplicação", linhas: "Linhas", valor: "Valor pago", parcela: "Parcela"},
-  format: {linhas: num, valor: brlCompact, parcela: pct},
-  layout: "auto"
+  header: {
+    escopo: "Localidade de aplicação",
+    linhas: "Linhas",
+    valor: "Valor pago",
+    parcela: "Parcela",
+  },
+  format: { linhas: num, valor: brlCompact, parcela: pct },
+  layout: "auto",
 })
 ```
 
@@ -98,3 +120,13 @@ Despesas são ligadas a sanções pelo CNPJ/CPF do fornecedor, apenas quando a d
 - Os meses mais recentes da CEAP estão incompletos: deputados têm até 90 dias para apresentar notas.
 - O PIB per capita de 2023 usa como denominador a média entre o Censo 2022 e a estimativa de 2024, porque o IBGE não publicou estimativa para 2023.
 - Valores são nominais (sem correção pela inflação).
+
+## Versão dos dados
+
+Cada build publica um manifesto com a versão do código, a data de download de cada arquivo-fonte e a contagem de linhas de cada tabela. Ele também é publicado em `/manifest.json`, num endereço fixo, para comparar cada atualização com a anterior (${html`<a href=${FileAttachment("data/manifest.json").href}>ver o arquivo</a>`}).
+
+```js
+const manifesto = await FileAttachment("data/manifest.json").json()
+```
+
+<p class="muted">Código do pipeline: <code>${manifesto.codigo_pipeline}</code>${manifesto.commit ? html` · commit <a href=${`https://github.com/davipferr/public-data-explorer/commit/${manifesto.commit}`}><code>${manifesto.commit.slice(0, 7)}</code></a>` : ""}</p>

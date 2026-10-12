@@ -17,6 +17,7 @@ import polars as pl
 
 from .clean import br_number_expr, clean_text, cnpj_cpf_expr, norm_expr
 from .http import NotFound, fetch, log
+from .schema import require_columns
 
 API = "https://dadosabertos.camara.leg.br/api/v2"
 BULK_DEPUTADOS = "https://dadosabertos.camara.leg.br/arquivos/deputados/csv/deputados.csv"
@@ -25,6 +26,29 @@ BULK_CEAP = "https://www.camara.leg.br/cotas/Ano-{year}.csv.zip"
 # Legislature 57 runs Feb 2023 - Jan 2027.
 LEGISLATURA_ATUAL = 57
 LEGISLATURA_INICIO = {55: 2015, 56: 2019, 57: 2023, 58: 2027}
+
+# Raw fields each source must provide (checked right after parsing).
+ROSTER_COLUMNS = ["id", "nome", "siglaPartido", "siglaUf", "urlFoto"]
+DEPUTADOS_BULK_COLUMNS = ["uri", "nomeCivil", "siglaSexo", "dataNascimento", "idLegislaturaInicial", "idLegislaturaFinal"]
+CEAP_COLUMNS = [
+    "ideCadastro",
+    "txNomeParlamentar",
+    "sgPartido",
+    "sgUF",
+    "numAno",
+    "numMes",
+    "datEmissao",
+    "numSubCota",
+    "txtDescricao",
+    "txtFornecedor",
+    "txtCNPJCPF",
+    "vlrDocumento",
+    "vlrGlosa",
+    "vlrLiquido",
+    "vlrRestituicao",
+    "ideDocumento",
+    "urlDocumento",
+]
 
 # Short display labels for CEAP sub-quotas (numSubCota). The raw descriptions are
 # long, uppercase and have changed wording over the years, so the code is the
@@ -74,7 +98,7 @@ def deputados() -> pl.DataFrame:
     """Every deputy who served in the current legislature, with civil data from the bulk file."""
     log("Câmara: deputados (API, current legislature)")
     roster = pl.DataFrame(_api_pages("deputados", {"idLegislatura": LEGISLATURA_ATUAL, "ordem": "ASC", "ordenarPor": "nome"}))
-    roster = roster.select(
+    roster = require_columns(roster, ROSTER_COLUMNS, f"Câmara API deputados (legislatura {LEGISLATURA_ATUAL})").select(
         pl.col("id").cast(pl.Int32).alias("deputado_id"),
         clean_text(pl.col("nome")).alias("nome"),
         pl.col("siglaPartido").alias("partido"),
@@ -84,7 +108,7 @@ def deputados() -> pl.DataFrame:
 
     log("Câmara: deputados (bulk CSV, all legislatures)")
     bulk = pl.read_csv(io.BytesIO(fetch(BULK_DEPUTADOS, suffix=".csv")), separator=";", infer_schema=False)
-    bulk = bulk.select(
+    bulk = require_columns(bulk, DEPUTADOS_BULK_COLUMNS, "Câmara deputados.csv").select(
         pl.col("uri").str.extract(r"/(\d+)$").cast(pl.Int32).alias("deputado_id"),
         clean_text(pl.col("nomeCivil")).alias("nome_civil"),
         pl.col("siglaSexo").alias("sexo"),
@@ -117,7 +141,7 @@ def deputados_historico() -> pl.DataFrame:
         log(f"Câmara: roster legislatura {leg}")
         rows = _api_pages("deputados", {"idLegislatura": leg})
         frames.append(
-            pl.DataFrame(rows).select(
+            require_columns(pl.DataFrame(rows), ROSTER_COLUMNS, f"Câmara API deputados (legislatura {leg})").select(
                 pl.col("id").cast(pl.Int32).alias("deputado_id"),
                 clean_text(pl.col("nome")).alias("nome"),
                 pl.col("siglaPartido").alias("partido"),
@@ -137,7 +161,9 @@ def ceap_raw(year: int) -> pl.DataFrame | None:
     with zipfile.ZipFile(io.BytesIO(blob)) as zf:
         data = zf.read(zf.namelist()[0])
     log(f"  CEAP {year}: {len(data) / 1e6:.0f} MB")
-    return pl.read_csv(io.BytesIO(data), separator=";", infer_schema=False)
+    # Checked per year: the concat in ``ceap`` is relaxed, so a column renamed in
+    # one year would otherwise just turn into nulls for that year.
+    return require_columns(pl.read_csv(io.BytesIO(data), separator=";", infer_schema=False), CEAP_COLUMNS, f"Câmara CEAP {year}")
 
 
 def ceap(years: list[int]) -> pl.DataFrame:

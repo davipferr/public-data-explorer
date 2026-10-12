@@ -40,6 +40,15 @@ jobs:
         env:
           # Optional. Without it, only the Bolsa Família page is empty.
           PORTAL_TRANSPARENCIA_API_KEY: ${{ secrets.PORTAL_TRANSPARENCIA_API_KEY }}
+      # Compare this build's data manifest with the one currently live and report
+      # changes in the job summary; large drops show up as warnings. Add --strict
+      # to the compare command to block the deploy instead.
+      - id: pages
+        uses: actions/configure-pages@v5
+      - name: Compare data with the live site
+        run: |
+          curl -fsSL "${{ steps.pages.outputs.base_url }}/manifest.json" -o previous-manifest.json || echo "No live manifest yet"
+          uv run python -m pipeline.manifest compare previous-manifest.json dist/manifest.json
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

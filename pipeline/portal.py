@@ -20,10 +20,18 @@ from datetime import date, timedelta
 import polars as pl
 
 from .clean import br_number_expr, clean_text, cnpj_cpf_expr, decode_latin1, municipio_code_expr, norm_expr, uf_code_expr
-from .http import ROOT, NotFound, RateLimiter, _cache_path, fetch, log
+from .http import ROOT, NotFound, RateLimiter, cached_path, fetch, log
+from .schema import require_columns
 
 DOWNLOAD = "https://portaldatransparencia.gov.br/download-de-dados"
 API = "https://api.portaldatransparencia.gov.br/api-de-dados"
+EMENDAS_URL = f"{DOWNLOAD}/emendas-parlamentares/UNICO"
+
+
+def ceis_url(day: str) -> str:
+    """Daily CEIS snapshot; ``day`` is "YYYYMMDD"."""
+    return f"{DOWNLOAD}/ceis/{day}"
+
 
 VALORES = {
     "Valor Empenhado": "empenhado",
@@ -34,12 +42,55 @@ VALORES = {
     "Valor Restos A Pagar Pagos": "rp_pagos",
 }
 
+# Raw columns each bulk file must have (checked right after parsing).
+EMENDAS_COLUMNS = [
+    "Código da Emenda",
+    "Ano da Emenda",
+    "Tipo de Emenda",
+    "Nome do Autor da Emenda",
+    "Localidade de aplicação do recurso",
+    "Código Município IBGE",
+    "Código UF IBGE",
+    "Nome Função",
+    "Nome Subfunção",
+    *VALORES,
+]
+FAVORECIDOS_COLUMNS = [
+    "Código da Emenda",
+    "Nome do Autor da Emenda",
+    "Tipo de Emenda",
+    "Ano/Mês",
+    "Código do Favorecido",
+    "Favorecido",
+    "Natureza Jurídica",
+    "Tipo Favorecido",
+    "UF Favorecido",
+    "Município Favorecido",
+    "Valor Recebido",
+]
+CEIS_COLUMNS = [
+    "CPF OU CNPJ DO SANCIONADO",
+    "TIPO DE PESSOA",
+    "NOME DO SANCIONADO",
+    "CATEGORIA DA SANÇÃO",
+    "DATA INÍCIO SANÇÃO",
+    "DATA FINAL SANÇÃO",
+    "ÓRGÃO SANCIONADOR",
+    "ABRANGÊNCIA DA SANÇÃO",
+]
+# CGU publishes this column misspelt ("ABRAGÊNCIA"); accept both so the day
+# they fix it doesn't break the build.
+CEIS_ALIASES = {"ABRAGÊNCIA DA SANÇÃO": "ABRANGÊNCIA DA SANÇÃO"}
 
-def _read_zip_csv(blob: bytes, name: str | None = None) -> pl.DataFrame:
+
+def _read_zip_csv(
+    blob: bytes, columns: list[str], source: str, name: str | None = None, aliases: dict[str, str] | None = None
+) -> pl.DataFrame:
     with zipfile.ZipFile(io.BytesIO(blob)) as zf:
         member = name or zf.namelist()[0]
         data = decode_latin1(zf.read(member))
-    return pl.read_csv(io.BytesIO(data), separator=";", infer_schema=False)
+    df = pl.read_csv(io.BytesIO(data), separator=";", infer_schema=False)
+    return require_columns(df, columns, f"{source} ({member})", aliases=aliases)
 
 
 # ---------------------------------------------------------------- emendas (bulk)
@@ -53,8 +104,8 @@ def emendas(municipios_validos: pl.Series) -> pl.DataFrame:
     paid is ``pago + rp_pagos``.
     """
     log("Portal: emendas parlamentares (bulk)")
-    blob = fetch(f"{DOWNLOAD}/emendas-parlamentares/UNICO", suffix=".zip", max_age=timedelta(days=7))
-    raw = _read_zip_csv(blob, "EmendasParlamentares.csv")
+    blob = fetch(EMENDAS_URL, suffix=".zip", max_age=timedelta(days=7))
+    raw = _read_zip_csv(blob, EMENDAS_COLUMNS, "Portal emendas", "EmendasParlamentares.csv")
     sem_info = ["Sem informação", "S/I", ""]
     df = raw.select(
         pl.col("Código da Emenda").replace(sem_info, None).alias("emenda_id"),
@@ -93,8 +144,8 @@ def emendas_favorecidos() -> pl.DataFrame:
     IBGE code. See ``matching.match_municipios``.
     """
     log("Portal: emendas por favorecido (bulk)")
-    blob = fetch(f"{DOWNLOAD}/emendas-parlamentares/UNICO", suffix=".zip", max_age=timedelta(days=7))
-    raw = _read_zip_csv(blob, "EmendasParlamentares_PorFavorecido.csv")
+    blob = fetch(EMENDAS_URL, suffix=".zip", max_age=timedelta(days=7))
+    raw = _read_zip_csv(blob, FAVORECIDOS_COLUMNS, "Portal emendas por favorecido", "EmendasParlamentares_PorFavorecido.csv")
     sem_info = ["Sem informação", "S/I", "Inválido", "-1", ""]
     return raw.select(
         pl.col("Código da Emenda").alias("emenda_id"),
@@ -127,7 +178,7 @@ def ceis(lookback_days: int = 10) -> pl.DataFrame:
     for back in range(lookback_days):
         day = (date.today() - timedelta(days=back)).strftime("%Y%m%d")
         try:
-            blob = fetch(f"{DOWNLOAD}/ceis/{day}", suffix=".zip", max_age=None)
+            blob = fetch(ceis_url(day), suffix=".zip", max_age=None)
             log(f"Portal: CEIS snapshot {day}")
             break
         except NotFound:
@@ -135,7 +186,7 @@ def ceis(lookback_days: int = 10) -> pl.DataFrame:
     else:
         raise RuntimeError(f"No CEIS snapshot in the last {lookback_days} days")
 
-    raw = _read_zip_csv(blob)
+    raw = _read_zip_csv(blob, CEIS_COLUMNS, f"Portal CEIS {day}", aliases=CEIS_ALIASES)
     return raw.select(
         pl.lit(f"{day[:4]}-{day[4:6]}-{day[6:]}").alias("snapshot"),
         cnpj_cpf_expr(pl.col("CPF OU CNPJ DO SANCIONADO")).alias("doc"),
@@ -145,7 +196,7 @@ def ceis(lookback_days: int = 10) -> pl.DataFrame:
         pl.col("DATA INÍCIO SANÇÃO").str.to_date("%d/%m/%Y", strict=False).alias("inicio"),
         pl.col("DATA FINAL SANÇÃO").str.to_date("%d/%m/%Y", strict=False).alias("fim"),
         clean_text(pl.col("ÓRGÃO SANCIONADOR")).alias("orgao"),
-        clean_text(pl.col("ABRAGÊNCIA DA SANÇÃO")).alias("abrangencia"),
+        clean_text(pl.col("ABRANGÊNCIA DA SANÇÃO")).alias("abrangencia"),
     ).filter(pl.col("doc").is_not_null())
 
 
@@ -175,8 +226,7 @@ class PortalApi:
 
     def get(self, path: str, params: dict, max_age: timedelta | None = None) -> list | dict:
         # Only rate-limit real network calls, not cache hits.
-        cached = _cache_path(f"{API}/{path}", params, ".json")
-        if not cached.exists():
+        if cached_path(f"{API}/{path}", params, ".json") is None:
             self._limiter.wait()
         return json.loads(fetch(f"{API}/{path}", params=params, headers=self._headers, suffix=".json", max_age=max_age))
 

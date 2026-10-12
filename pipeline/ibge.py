@@ -20,6 +20,7 @@ from .clean import clean_text, norm_expr, uf_frame
 from .http import fetch, log
 
 BASE = "https://servicodados.ibge.gov.br/api"
+MUNICIPIOS_URL = f"{BASE}/v1/localidades/municipios"
 
 # SIDRA's special symbols (see "Sinais convencionais" on sidra.ibge.gov.br).
 #   "-"   numeric zero, not from rounding      -> 0
@@ -85,7 +86,7 @@ def municipios() -> pl.DataFrame:
     Boa Esperança do Norte-MT, created in 2025, after microregions were frozen),
     so the UF is taken from the newer "região imediata" hierarchy when needed.
     """
-    data = json.loads(fetch(f"{BASE}/v1/localidades/municipios", suffix=".json", max_age=timedelta(days=30)))
+    data = json.loads(fetch(MUNICIPIOS_URL, suffix=".json", max_age=timedelta(days=30)))
     rows = []
     for m in data:
         uf = None
@@ -102,10 +103,14 @@ def municipios() -> pl.DataFrame:
     return df.join(uf_frame(), on="uf_code", how="left").with_columns(norm_expr(pl.col("nome")).alias("nome_norm"))
 
 
+def malha_request(intrarregiao: str, qualidade: str = "minima", localidade: str = "paises/BR") -> tuple[str, dict]:
+    """URL and query parameters of a /api/v3/malhas request."""
+    return f"{BASE}/v3/malhas/{localidade}", {"intrarregiao": intrarregiao, "qualidade": qualidade, "formato": "application/json"}
+
+
 def malha(intrarregiao: str, qualidade: str = "minima", localidade: str = "paises/BR") -> bytes:
     """TopoJSON mesh from /api/v3/malhas. Features carry ``codarea`` (the IBGE code)."""
-    url = f"{BASE}/v3/malhas/{localidade}"
-    params = {"intrarregiao": intrarregiao, "qualidade": qualidade, "formato": "application/json"}
+    url, params = malha_request(intrarregiao, qualidade, localidade)
     log(f"malha {localidade} intrarregiao={intrarregiao} qualidade={qualidade}")
     return fetch(url, params=params, suffix=".topojson", max_age=timedelta(days=90))
 
