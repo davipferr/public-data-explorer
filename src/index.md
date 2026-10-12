@@ -157,8 +157,13 @@ const bancadas = d3
 
 <style>
 .lede { font-size: 1.15rem; max-width: 52rem; color: var(--theme-foreground-muted); }
-.card-link { text-decoration: none; color: inherit; transition: border-color 150ms; }
-.card-link:hover { border-color: var(--theme-foreground-focus); }
+.card-link { text-decoration: none; color: inherit; transition: border-color 150ms, transform 150ms, box-shadow 150ms; }
+.card-link:hover { border-color: var(--theme-foreground-focus); transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); }
+.card-link:focus-visible { outline: 2px solid var(--theme-foreground-focus); outline-offset: 2px; }
+/* An arrow on each title says "this card opens a page"; it slides on hover. */
+.card-link h2::after { content: "→"; display: inline-block; margin-left: 0.35em; color: var(--theme-foreground-focus); transition: transform 150ms; }
+.card-link:hover h2::after { transform: translateX(3px); }
+@media (prefers-reduced-motion: reduce) { .card-link, .card-link h2::after { transition: none; } .card-link:hover { transform: none; } }
 .card-link svg { display: block; margin-top: 0.75rem; }
 .hero { padding: 1.5rem; }
 .hero .hero-title { font: 600 clamp(20px, 2.6vw, 28px)/1.25 var(--serif); max-width: 46rem; margin-bottom: 1rem; color: var(--theme-foreground); }

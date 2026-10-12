@@ -1,8 +1,8 @@
-/* Site theme: Framework's default layout + air (light) / near-midnight (dark),
-   with our own typography, accent and a few components on top. */
+/* Site theme: Framework's default layout + near-midnight, dark-only (it sets
+   color-scheme: dark, so Framework's `dark` flag — and every palette(dark) —
+   is always true), with our own typography, accent and components on top. */
 @import url("observablehq:default.css");
-@import url("observablehq:theme-air.css") (prefers-color-scheme: light);
-@import url("observablehq:theme-near-midnight.css") (prefers-color-scheme: dark);
+@import url("observablehq:theme-near-midnight.css");
 @import url("observablehq:theme-alt.css");
 @import url("observablehq:theme-wide.css");
 
@@ -12,13 +12,8 @@
   --font-big: 600 34px/1.05 var(--sans-serif);
   /* Accent = slot 1 of the chart palette (components/palette.js), so links,
      focus rings and the default series share one blue. */
-  --theme-foreground-focus: #2a78d6;
+  --theme-foreground-focus: #3987e5;
   --accent-soft: color-mix(in srgb, var(--theme-foreground-focus) 12%, var(--theme-background));
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --theme-foreground-focus: #3987e5;
-  }
 }
 
 /* Prose in the sans; headings in the serif. Figures (KPIs, charts) stay sans. */
@@ -94,6 +89,27 @@ svg[class^="plot"] text,
   padding-right: 2.75rem;
   line-height: 1.25;
 }
+
+/* Sidebar open/close buttons: Framework draws them in the faint muted grey; a
+   lighter grey makes them easier to spot. */
+#observablehq-sidebar-toggle,
+#observablehq-sidebar-close {
+  color: var(--theme-foreground-alt);
+}
+
+/* Markdown tables (e.g. sources on "Sobre os dados") hold long API paths in
+   <code>; let them break so the table fits on phones instead of scrolling the page. */
+#observablehq-main td,
+#observablehq-main th {
+  overflow-wrap: anywhere;
+}
+
+/* Framework's chrome text in Portuguese: pager labels and Inputs.table's
+   empty state (both have no option to change them). */
+#observablehq-footer nav a[rel="prev"]::before { content: "Página anterior"; }
+#observablehq-footer nav a[rel="next"]::before { content: "Próxima página"; }
+form table td[rowspan][style*="italic"] { font-size: 0; }
+form table td[rowspan][style*="italic"]::after { content: "Nenhum resultado."; font-size: 12px; }
 
 /* Callout labels in Portuguese (Framework ships them in English). */
 .note:not([label])::before { content: "Nota"; }

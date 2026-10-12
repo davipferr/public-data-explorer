@@ -41,3 +41,6 @@ export const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "s
 export function rows(table) {
   return Array.from(table, (r) => r.toJSON());
 }
+
+/** Result count for Inputs.search (its default label is English). */
+export const resultados = (n) => (n === 0 ? "nenhum resultado" : `${int(n)} resultado${n === 1 ? "" : "s"}`);

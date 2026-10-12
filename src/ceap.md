@@ -7,7 +7,7 @@ title: Cota parlamentar (Câmara)
 A Cota para o Exercício da Atividade Parlamentar reembolsa despesas como passagens, combustível, divulgação e escritório. Fonte: arquivos anuais em massa da Câmara (um CSV por ano, com cada nota fiscal), limpos e agregados por deputado, mês e categoria.
 
 ```js
-import {brl, brlCompact, MESES, num, numCompact, rows} from "./components/format.js";
+import {brl, brlCompact, MESES, num, numCompact, resultados, rows} from "./components/format.js";
 import {palette} from "./components/palette.js";
 import {eleicoesMarks, hbars, labelMargin, picoMark} from "./components/charts.js";
 import {grupoPartido, partyScale} from "./components/parties.js";
@@ -145,7 +145,7 @@ const porPartido = d3
 Os ${num(fornecedores.length)} maiores fornecedores no período inteiro, identificados pelo CNPJ/CPF (o nome exibido é o mais frequente nas notas).
 
 ```js
-const buscaForn = view(Inputs.search(fornecedores, {placeholder: "Buscar fornecedor, CNPJ ou categoria…"}));
+const buscaForn = view(Inputs.search(fornecedores, {placeholder: "Buscar fornecedor, CNPJ ou categoria…", format: resultados}));
 ```
 
 ```js

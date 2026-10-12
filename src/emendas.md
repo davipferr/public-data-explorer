@@ -7,7 +7,7 @@ title: Emendas parlamentares
 Emendas são a parte do Orçamento da União que deputados e senadores direcionam a projetos e localidades. Fonte: download em massa do Portal da Transparência (sem chave de API), com autores ligados aos deputados da Câmara e municípios ligados aos códigos do IBGE.
 
 ```js
-import {brl, brlCompact, num, pct, rows} from "./components/format.js";
+import {brl, brlCompact, num, pct, resultados, rows} from "./components/format.js";
 import {palette} from "./components/palette.js";
 import {choropleth} from "./components/choropleth.js";
 import {treemap} from "./components/treemap.js";
@@ -164,7 +164,7 @@ const porAutorTipo = d3.rollups(dados, (v) => d3.sum(v, (d) => d.pago_total), (d
 </div>
 
 ```js
-const busca = view(Inputs.search(porDeputado, {placeholder: "Buscar deputado, partido ou UF…"}));
+const busca = view(Inputs.search(porDeputado, {placeholder: "Buscar deputado, partido ou UF…", format: resultados}));
 ```
 
 ```js

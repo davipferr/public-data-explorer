@@ -7,7 +7,7 @@ title: Municípios (IBGE)
 População e economia dos ${municipios.length.toLocaleString("pt-BR")} municípios brasileiros, a partir da API SIDRA (tabelas 4709, 6579 e 5938) e da malha territorial do IBGE.
 
 ```js
-import {brlCompact, num, numCompact, pct, rows} from "./components/format.js";
+import {brlCompact, num, numCompact, pct, resultados, rows} from "./components/format.js";
 import {palette} from "./components/palette.js";
 import {choropleth} from "./components/choropleth.js";
 
@@ -179,7 +179,7 @@ const rotulos = [
 ## Tabela
 
 ```js
-const busca = view(Inputs.search(municipios, {placeholder: "Buscar município, UF ou região…", columns: ["nome", "uf", "uf_nome", "regiao"]}));
+const busca = view(Inputs.search(municipios, {placeholder: "Buscar município, UF ou região…", format: resultados, columns: ["nome", "uf", "uf_nome", "regiao"]}));
 ```
 
 ```js
