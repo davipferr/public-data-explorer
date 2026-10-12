@@ -85,6 +85,16 @@ svg[class^="plot"] text,
   }
 }
 
+/* Sidebar title: Framework pins the close (toggle) button over the right edge
+   of the title link, and our title is long enough to run underneath it. Keep a
+   gutter for the button and let the title wrap onto two lines instead. */
+#observablehq-sidebar > ol:first-child > li > a {
+  height: auto;
+  min-height: calc(var(--observablehq-header-height) - 1rem);
+  padding-right: 2.75rem;
+  line-height: 1.25;
+}
+
 /* Callout labels in Portuguese (Framework ships them in English). */
 .note:not([label])::before { content: "Nota"; }
 .tip:not([label])::before { content: "Dica"; }
